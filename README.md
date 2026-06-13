@@ -1,7 +1,6 @@
 # luminogotchi
 
-a robotic desk lamp inspired by jacob jacobsen's original luxo l-1 and pixar's
-luxo sr — a statement piece that's both functional as a desk lamp and brings
+a robotic desk lamp inspired by jacob jacobsen's original luxo l-1 — a statement piece that's both functional as a desk lamp and brings
 tamagotchi-like personality to any space.
 
 in v1, emotions and behaviors are entirely hardcoded state machines rather
