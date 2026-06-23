@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Luminogotchi — a robotic desk lamp with tamagotchi-like personality, built on ESP32">
+<title>Luminogotchi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080808;
+  --surface:#101010;
+  --border:rgba(255,255,255,0.07);
+  --text:#eeeeee;
+  --muted:rgba(238,238,238,0.38);
+  --orange:#d85a30;
+  --orange-hi:#ff6b35;
+  --mono:'Space Mono',monospace;
+}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--mono);
+  overflow-x:hidden;
+  cursor:crosshair;
+}
+body::before{
+  content:'';
+  position:fixed;
+  inset:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.022) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,0.022) 1px,transparent 1px);
+  background-size:56px 56px;
+  pointer-events:none;
+  z-index:0;
+}
+
+/* ── LOADER ── */
+#loader{
+  position:fixed;inset:0;
+  background:var(--bg);
+  z-index:999;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:20px;
+}
+#loader-name{
+  font-size:clamp(16px,4vw,26px);
+  font-weight:700;letter-spacing:0.35em;
+  color:var(--orange);
+}
+#loader-track{
+  width:min(300px,65vw);height:1px;
+  background:rgba(255,255,255,0.08);
+  position:relative;
+}
+#loader-fill{
+  position:absolute;left:0;top:0;height:100%;
+  width:0%;background:var(--orange);
+}
+#loader-num{
+  font-size:10px;letter-spacing:0.2em;color:var(--muted);
+}
+
+/* ── CANVAS ── */
+#bg-canvas{
+  position:fixed;top:0;left:0;
+  width:100%;height:100%;
+  z-index:1;pointer-events:none;
+}
+
+/* ── CONTENT ── */
+#content{position:relative;z-index:2}
+
+/* ── NAV ── */
+nav{
+  position:fixed;top:0;left:0;right:0;z-index:10;
+  display:flex;justify-content:space-between;align-items:center;
+  padding:18px 40px;
+  font-size:10px;letter-spacing:0.18em;color:var(--muted);
+}
+.nav-logo{color:var(--orange);font-weight:700;font-size:12px;text-decoration:none}
+.nav-links{display:flex;gap:28px;list-style:none}
+.nav-links a{color:var(--muted);text-decoration:none;transition:color 0.2s}
+.nav-links a:hover{color:var(--text)}
+.nav-tag{border:1px solid var(--border);padding:4px 10px;font-size:9px;letter-spacing:0.15em}
+
+/* ── HERO ── */
+#hero{
+  height:100vh;
+  display:flex;flex-direction:column;
+  justify-content:flex-end;
+  padding:0 40px 52px;
+  position:relative;
+}
+.hero-eyebrow{
+  font-size:10px;letter-spacing:0.22em;
+  color:var(--orange);margin-bottom:14px;
+  font-style:italic;
+}
+.hero-title{
+  font-size:clamp(36px,9vw,100px);
+  font-weight:700;line-height:0.88;
+  letter-spacing:-0.03em;
+  margin-bottom:28px;
+}
+.hero-title .accent{color:var(--orange)}
+.hero-body{
+  font-size:clamp(11px,1.3vw,13px);
+  color:var(--muted);
+  max-width:300px;line-height:1.9;
+  margin-bottom:36px;
+}
+.hero-pills{display:flex;gap:8px;flex-wrap:wrap}
+.pill{
+  font-size:9px;letter-spacing:0.14em;
+  padding:5px 10px;
+  border:1px solid var(--border);
+  color:var(--muted);
+}
+
+/* HUD */
+.hud{
+  position:absolute;right:40px;top:50%;transform:translateY(-50%);
+  display:flex;flex-direction:column;gap:10px;
+  font-size:9px;letter-spacing:0.13em;color:var(--muted);text-align:right;
+}
+.hud-row{display:flex;align-items:center;gap:7px;justify-content:flex-end}
+.hud-dot{width:4px;height:4px;border-radius:50%;background:var(--orange);flex-shrink:0}
+#hud-mood-val{color:var(--text)}
+.scroll-cue{
+  position:absolute;bottom:22px;left:50%;transform:translateX(-50%);
+  font-size:9px;letter-spacing:0.22em;color:var(--muted);
+  animation:breathe 2.4s ease-in-out infinite;
+}
+@keyframes breathe{0%,100%{opacity:0.3}50%{opacity:0.9}}
+
+/* ── MOODS ── */
+#moods{
+  min-height:85vh;display:flex;flex-direction:column;
+  justify-content:center;padding:80px 40px;
+}
+.sec-label{
+  font-size:10px;letter-spacing:0.22em;color:var(--orange);
+  margin-bottom:28px;
+}
+.sec-label::before{content:'// '}
+#mood-display{
+  font-size:clamp(28px,5.5vw,60px);
+  font-weight:700;letter-spacing:-0.02em;
+  margin-bottom:44px;line-height:1;
+  transition:color 0.3s;
+}
+.mood-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(96px,1fr));
+  gap:1px;background:var(--border);
+  border:1px solid var(--border);max-width:600px;
+}
+.mood-btn{
+  background:var(--bg);border:none;
+  color:var(--muted);font-family:var(--mono);
+  font-size:9px;letter-spacing:0.14em;
+  padding:15px 6px;cursor:crosshair;
+  transition:background 0.15s,color 0.15s;
+}
+.mood-btn:hover{background:var(--surface);color:var(--text)}
+.mood-btn.active{background:var(--orange);color:#fff}
+
+/* ── FEATURES ── */
+#features{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:1px;background:var(--border);
+  border-top:1px solid var(--border);
+  border-bottom:1px solid var(--border);
+}
+.feat{
+  background:rgba(8,8,8,0.72);
+  backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);
+  padding:44px 32px;
+  position:relative;overflow:hidden;
+  opacity:0;transform:translateY(32px);
+}
+.feat::after{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,var(--orange),transparent);
+  opacity:0;transition:opacity 0.3s;
+}
+.feat:hover::after{opacity:1}
+.feat-num{font-size:9px;letter-spacing:0.22em;color:var(--orange);margin-bottom:22px}
+.feat-title{font-size:18px;font-weight:700;margin-bottom:12px;line-height:1.1}
+.feat-desc{font-size:11px;color:var(--muted);line-height:2.0}
+
+/* ── CTA ── */
+#cta{
+  min-height:70vh;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  padding:80px 40px;text-align:center;gap:20px;
+}
+.cta-eyebrow{font-size:10px;letter-spacing:0.22em;color:var(--orange);font-style:italic}
+.cta-title{
+  font-size:clamp(26px,5.5vw,58px);
+  font-weight:700;letter-spacing:-0.02em;line-height:1;
+  opacity:0;transform:translateY(24px);
+}
+.cta-btn{
+  margin-top:8px;
+  display:inline-flex;align-items:center;gap:10px;
+  background:var(--orange);color:#fff;
+  border:none;font-family:var(--mono);
+  font-size:11px;letter-spacing:0.18em;
+  padding:16px 32px;cursor:crosshair;
+  text-decoration:none;
+  transition:background 0.18s,transform 0.18s;
+}
+.cta-btn:hover{background:var(--orange-hi);transform:translateY(-2px)}
+.stardance-badge{
+  border:1px solid var(--border);
+  font-size:9px;letter-spacing:0.18em;
+  padding:7px 14px;color:var(--muted);margin-top:24px;
+}
+
+/* ── FOOTER ── */
+footer{
+  padding:28px 40px;
+  display:flex;justify-content:space-between;align-items:center;
+  border-top:1px solid var(--border);
+  font-size:9px;letter-spacing:0.14em;color:var(--muted);
+}
+.footer-links{display:flex;gap:22px;list-style:none}
+.footer-links a{color:var(--muted);text-decoration:none;transition:color 0.2s}
+.footer-links a:hover{color:var(--text)}
+
+/* ── RESPONSIVE ── */
+@media(max-width:700px){
+  nav{padding:14px 20px}
+  .nav-links{display:none}
+  #hero{padding:0 20px 44px}
+  .hud{display:none}
+  #moods{padding:60px 20px}
+  #features{padding:0}
+  .feat{padding:36px 24px}
+  #cta{padding:60px 20px}
+  footer{padding:20px;flex-direction:column;gap:14px;text-align:center}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+
+<!-- loader -->
+<div id="loader">
+  <div id="loader-name">LUMINOGOTCHI</div>
+  <div id="loader-track"><div id="loader-fill"></div></div>
+  <div id="loader-num">000</div>
+</div>
+
+<!-- 3d canvas -->
+<canvas id="bg-canvas"></canvas>
+
+<div id="content">
+
+  <nav>
+    <a class="nav-logo" href="#">LUMINOGOTCHI</a>
+    <ul class="nav-links">
+      <li><a href="#moods">MOODS</a></li>
+      <li><a href="#features">BUILD</a></li>
+      <li><a href="https://github.com" target="_blank">GITHUB ↗</a></li>
+    </ul>
+    <span class="nav-tag">ESP32 — V1</span>
+  </nav>
+
+  <!-- hero -->
+  <section id="hero">
+    <p class="hero-eyebrow">a desk lamp with feelings</p>
+    <h1 class="hero-title">LUMINO<br><span class="accent">GOTCHI</span></h1>
+    <p class="hero-body">inspired by jacob jacobsen's luxo l-1 and pixar's luxo sr. servo-driven joints, capacitive touch, hardcoded soul.</p>
+    <div class="hero-pills">
+      <span class="pill">ESP32</span>
+      <span class="pill">4× MG996R</span>
+      <span class="pill">CAPACITIVE TOUCH</span>
+      <span class="pill">MIT LICENSE</span>
+    </div>
+
+    <div class="hud">
+      <div class="hud-row"><span>MOOD: <span id="hud-mood-val">NEUTRAL</span></span><div class="hud-dot"></div></div>
+      <div class="hud-row"><span>JOINTS: 4</span></div>
+      <div class="hud-row"><span>TOUCH ZONES: 3</span></div>
+      <div class="hud-row"><span>HEIGHT: 60CM+</span></div>
+    </div>
+
+    <span class="scroll-cue">▼ SCROLL</span>
+  </section>
+
+  <!-- moods -->
+  <section id="moods">
+    <p class="sec-label">PERSONALITY</p>
+    <div id="mood-display">NEUTRAL</div>
+    <div class="mood-grid">
+      <button class="mood-btn active" data-mood="neutral">NEUTRAL</button>
+      <button class="mood-btn" data-mood="happy">HAPPY</button>
+      <button class="mood-btn" data-mood="sad">SAD</button>
+      <button class="mood-btn" data-mood="alert">ALERT</button>
+      <button class="mood-btn" data-mood="sleepy">SLEEPY</button>
+      <button class="mood-btn" data-mood="excited">EXCITED</button>
+      <button class="mood-btn" data-mood="shy">SHY</button>
+      <button class="mood-btn" data-mood="suspicious">SUSPICIOUS</button>
+      <button class="mood-btn" data-mood="observe">OBSERVE</button>
+      <button class="mood-btn" data-mood="lookLeft">LOOK LEFT</button>
+      <button class="mood-btn" data-mood="lookRight">LOOK RIGHT</button>
+    </div>
+  </section>
+
+  <!-- features -->
+  <section id="features">
+    <div class="feat">
+      <div class="feat-num">TOUCH</div>
+      <div class="feat-title">SHADE IS<br>THE SENSOR</div>
+      <div class="feat-desc">the metal lampshade is wired as a capacitive touch zone. tap it, hold it, stroke it — luminogotchi knows the difference.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-num">MOODS</div>
+      <div class="feat-title">8 HAND-CRAFTED<br>PERSONALITIES</div>
+      <div class="feat-desc">every animation is a servo sequence built from disney's 12 principles. no ai. just code and physics.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-num">OFFLINE</div>
+      <div class="feat-title">NO CLOUD.<br>NO LATENCY.</div>
+      <div class="feat-desc">runs entirely on an esp32. plug it in, it lives. no api keys, no wifi needed, no subscription.</div>
+    </div>
+    <div class="feat">
+      <div class="feat-num">OPEN</div>
+      <div class="feat-title">MIT LICENSE.<br>FORK IT.</div>
+      <div class="feat-desc">firmware, cad files, build logs — all public on github. built for hack club stardance 2026.</div>
+    </div>
+  </section>
+
+  <!-- cta -->
+  <section id="cta">
+    <p class="cta-eyebrow">// build your own</p>
+    <h2 class="cta-title">GIVE YOUR DESK<br>A PERSONALITY</h2>
+    <a class="cta-btn" href="https://github.com/Adwitya-OOI/Luminogotchi" target="_blank">VIEW ON GITHUB →</a>
+    <div class="stardance-badge">HACK CLUB STARDANCE 2026</div>
+  </section>
+
+  <footer>
+    <span>© 2026 LUMINOGOTCHI — MIT LICENSE</span>
+    <ul class="footer-links">
+      <li><a href="https://github.com/Adwitya-OOI?" target="_blank">GITHUB</a></li>
+      <li><a href="https://stardance.hackclub.com/@adwitya" target="_blank">STARDANCE</a></li>
+    </ul>
+  </footer>
+
+</div>
+
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+
+<script>
+console.log("THREE:", typeof THREE);
+console.log("GSAP:", typeof gsap);
+</script>
+
+<script>
+gsap.registerPlugin(ScrollTrigger);
+
+// ── RENDERER ──
+const canvas = document.getElementById('bg-canvas');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(28, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(4.5, 4.5, 14);
+camera.lookAt(0, 3, 0);
+
+function resize(){
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+}
+resize();
+addEventListener('resize', resize);
+
+// ── LIGHTS ──
+scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+
+const keyLight = new THREE.DirectionalLight(0xffffff, 1.8);
+keyLight.position.set(6, 9, 7);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.width = 1024;
+keyLight.shadow.mapSize.height = 1024;
+scene.add(keyLight);
+
+const rimLight = new THREE.DirectionalLight(0x2233cc, 0.5);
+rimLight.position.set(-6, 3, -5);
+scene.add(rimLight);
+
+// ── MATERIALS ──
+const arm = new THREE.MeshStandardMaterial({color:0xc8c8cc, metalness:0.93, roughness:0.2});
+const joint = new THREE.MeshStandardMaterial({color:0x888890, metalness:0.88, roughness:0.32});
+const shade = new THREE.MeshStandardMaterial({color:0xd85a30, metalness:0.68, roughness:0.3,side:THREE.DoubleSide});
+const base = new THREE.MeshStandardMaterial({color:0x141414, metalness:0.55, roughness:0.58});
+
+// shadow catcher
+const shadowCatcher = new THREE.Mesh(
+  new THREE.PlaneGeometry(20, 20),
+  new THREE.ShadowMaterial({opacity:0.28})
+);
+shadowCatcher.rotation.x = -Math.PI/2;
+shadowCatcher.position.y = -0.08;
+shadowCatcher.receiveShadow = true;
+scene.add(shadowCatcher);
+
+// ── LAMP HIERARCHY ──
+const root = new THREE.Group();
+scene.add(root);
+root.scale.set(0.7, 0.7, 0.7);
+
+// base disc
+const baseDisk = new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.35,0.28,64), base);
+baseDisk.position.y = 0.14;
+baseDisk.castShadow = true;
+baseDisk.receiveShadow = true;
+root.add(baseDisk);
+
+// short neck
+const neck0 = new THREE.Mesh(new THREE.CylinderGeometry(0.11,0.11,0.32,16), arm);
+neck0.position.y = 0.42;
+root.add(neck0);
+
+// ── lower arm group ──
+const lgLower = new THREE.Group();
+lgLower.position.y = 0.58;
+root.add(lgLower);
+
+const jLower = new THREE.Mesh(new THREE.SphereGeometry(0.21,32,32), joint);
+jLower.castShadow = true;
+lgLower.add(jLower);
+
+const rodLower = new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.09,2.5,16), arm);
+rodLower.position.y = 1.25;
+rodLower.castShadow = true;
+lgLower.add(rodLower);
+
+// ── mid arm group ──
+const lgMid = new THREE.Group();
+lgMid.position.y = 2.5;
+lgLower.add(lgMid);
+
+const jMid = new THREE.Mesh(new THREE.SphereGeometry(0.17,32,32), joint);
+jMid.castShadow = true;
+lgMid.add(jMid);
+
+const rodMid = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.08,2.0,16), arm);
+rodMid.position.y = 1.0;
+rodMid.castShadow = true;
+lgMid.add(rodMid);
+
+// ── head group ──
+const lgHead = new THREE.Group();
+lgHead.position.y = 2.0;
+lgMid.add(lgHead);
+
+const jHead = new THREE.Mesh(new THREE.SphereGeometry(0.15,32,32), joint);
+lgHead.add(jHead);
+
+// neck to shade
+const neckHead = new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.07,0.45,16), arm);
+neckHead.position.set(0,0.38,0.18);
+neckHead.rotation.x = 0.18;
+lgHead.add(neckHead);
+
+// shade cone
+
+const shadeMesh = new THREE.Mesh(
+  new THREE.ConeGeometry(0.72,1.05,64,1,true),
+  shade
+);
+
+shadeMesh.rotation.x = Math.PI;
+shadeMesh.position.set(0,1.05,0.22);
+
+lgHead.add(shadeMesh);
+
+// rim ring around shade opening
+const ring = new THREE.Mesh(new THREE.TorusGeometry(0.72,0.028,8,64), joint);
+ring.position.copy(shadeMesh.position);
+ring.position.y += 0.0;
+lgHead.add(ring);
+
+// bulb
+const bulbMat = new THREE.MeshStandardMaterial({
+  color:0xfac775,
+  emissive:0xfac775,
+  emissiveIntensity:2.2,
+  roughness:0.08,
+  metalness:0.0
+});
+const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.16,32,32), bulbMat);
+bulb.position.set(0,0.78,0.22);
+lgHead.add(bulb);
+
+const lampPt = new THREE.PointLight(0xfac775, 2.8, 9);
+lampPt.position.copy(bulb.position);
+lgHead.add(lampPt);
+
+// ── MOODS ──
+const moods = {
+  neutral:   {lX:-0.15, mX:0.25,  hX:-0.05, hY:0,    glow:2.4, em:2.0},
+  curious:   {lX:-0.3,  mX:-0.15, hX:0.45,  hY:0.4,  glow:2.8, em:2.3},
+  happy:     {lX:-0.25,  mX:-0.20,hX:1,  hY:0,    glow:15, em:2.8},
+  sad:       {lX:0.3,   mX:0.5,   hX:0.8,   hY:0,    glow:0.7, em:0.45},
+  alert:     {lX:-0.5,  mX:-0.4,  hX:1.5,  hY:0,    glow:3.8, em:3.0},
+  sleepy:    {lX:0.15,  mX:0.2,   hX:1.1 ,  hY:0,    glow:0.35,em:0.28},
+  excited:   {lX:-0.62, mX:-0.52, hX:-0.42, hY:0,    glow:4.5, em:3.5},
+  suspicious:{lX:-0.1,  mX:0.1,   hX:0.15,  hY:0.8,  glow:2.0, em:1.8},
+  shy:       {lX:0.25,  mX:0.3,   hX:0.9,   hY:0.5,  glow:1.2, em:1.0},
+  observe:   {lX:0,     mX:0,     hX:0.6,   hY:0.9,  glow:2.4, em:2.0},
+  lookLeft:  {lX:0,     mX:0,     hX:1,     hY:-0.9,  glow:2.4, em:2.0},
+  lookRight: {lX:0,     mX:0,     hX:1,     hY:0.9, glow:2.4, em:2.0}
+};
+
+let tgt = moods.neutral;
+let cur = {lX:0,mX:0,hX:0,hY:0,glow:2.4,em:2.0};
+let trackingMode = false;
+
+
+// ── MOUSE ──
+const mouse = {x:0, y:0};
+let lookX = 0;
+let lookY = 0;
+addEventListener('mousemove', e=>{
+  mouse.x = (e.clientX/innerWidth - 0.5)*2;
+  mouse.y = -(e.clientY/innerHeight - 0.5)*2;
+});
+
+// ── MOOD BUTTONS ──
+const moodDisplay = document.getElementById('mood-display');
+const hudMood = document.getElementById('hud-mood-val');
+
+document.querySelectorAll('.mood-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    const mood = btn.dataset.mood;
+
+trackingMode = mood === "observe";
+tgt = moods[mood];
+    document.querySelectorAll('.mood-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const label = btn.dataset.mood.toUpperCase();
+    moodDisplay.textContent = label;
+    if(hudMood) hudMood.textContent = label;
+  });
+});
+
+// ── GSAP SCROLL ANIMATIONS ──
+gsap.utils.toArray('.feat').forEach((card, i)=>{
+  gsap.to(card, {
+    opacity:1, y:0,
+    duration:0.75,
+    delay: i*0.08,
+    ease:'power2.out',
+    scrollTrigger:{
+      trigger:card,
+      start:'top 86%',
+      toggleActions:'play none none none'
+    }
+  });
+});
+
+gsap.to('.cta-title',{
+  opacity:1, y:0,
+  duration:0.9,
+  ease:'power2.out',
+  scrollTrigger:{trigger:'#cta', start:'top 72%'}
+});
+
+gsap.fromTo('#mood-display',
+  {opacity:0, x:-24},
+  {opacity:1, x:0, duration:0.65, ease:'power2.out',
+   scrollTrigger:{trigger:'#moods', start:'top 72%'}}
+);
+
+gsap.fromTo('.mood-grid',
+  {opacity:0, y:20},
+  {opacity:1, y:0, duration:0.65, delay:0.1, ease:'power2.out',
+   scrollTrigger:{trigger:'#moods', start:'top 65%'}}
+);
+
+// ── RENDER LOOP ──
+const clock = new THREE.Clock();
+
+function lerp(a,b,t){return a+(b-a)*t}
+
+function tick(){
+  requestAnimationFrame(tick);
+  const t = clock.getElapsedTime();
+
+  cur.lX = lerp(cur.lX, tgt.lX, 0.065);
+  cur.mX = lerp(cur.mX, tgt.mX, 0.065);
+  cur.hX = lerp(cur.hX, tgt.hX, 0.065);
+  cur.hY = lerp(cur.hY, tgt.hY, 0.065);
+  cur.glow = lerp(cur.glow, tgt.glow, 0.065);
+  cur.em = lerp(cur.em, tgt.em, 0.065);
+  lookX += (mouse.x - lookX) * 0.8;
+  lookY += (mouse.y - lookY) * 0.8;
+  root.rotation.y = lerp(root.rotation.y, mouse.x*0.22, 0.04);
+
+  lgLower.rotation.x = cur.lX + Math.sin(t*0.42)*0.011;
+  lgMid.rotation.x   = cur.mX + Math.sin(t*0.42+0.6)*0.009;
+if(trackingMode){
+
+  lgHead.rotation.x =
+      0.15
+      - lgLower.rotation.x * 0.4
+      - lgMid.rotation.x * 0.2
+      + lookY * 0.25;
+
+  lgHead.rotation.y =
+      lookX * 0.9;
+
+}else{
+
+  lgHead.rotation.x =
+      cur.hX
+      - lgLower.rotation.x * 0.4
+      - lgMid.rotation.x * 0.2
+      + Math.sin(t*0.5+1.1)*0.013;
+
+  lgHead.rotation.y =
+      cur.hY + mouse.x * 0.06;
+
+}
+
+  lampPt.intensity = cur.glow;
+  bulbMat.emissiveIntensity = cur.em;
+
+  root.rotation.z = Math.sin(t*0.28)*0.007;
+
+  renderer.render(scene, camera);
+}
+
+// ── LOADER ──
+const fill = document.getElementById('loader-fill');
+const numEl = document.getElementById('loader-num');
+const loaderEl = document.getElementById('loader');
+
+let pct = 0;
+const iv = setInterval(()=>{
+  pct += Math.random()*15 + 5;
+  if(pct >= 100){
+    pct = 100;
+    clearInterval(iv);
+    fill.style.width = '100%';
+    numEl.textContent = '100';
+    setTimeout(()=>{
+      gsap.to(loaderEl,{
+        opacity:0, duration:0.65,
+        onComplete:()=>{
+          loaderEl.style.display='none';
+          tick();
+        }
+      });
+    }, 280);
+  }
+  fill.style.width = Math.min(pct,100)+'%';
+  numEl.textContent = String(Math.floor(Math.min(pct,100))).padStart(3,'0');
+}, 75);
+</script>
+</body>
+</html>
