@@ -24,7 +24,7 @@ built for hack club stardance.
 firmware is in `firmware/Luminogotchi/`, written for the arduino ide.
 
 - `motion.h` / `motion.cpp` — servo control, easing, named poses
-- `touch.h` / `touch.cpp` — capacitive touch sensing (wip)
+- `touch.h` / `touch.cpp` — capacitive touch sensing
 - `mood.h` / `mood.cpp` — personality/state engine (coming soon)
 
 ### setup
